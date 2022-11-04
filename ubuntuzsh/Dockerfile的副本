@@ -1,0 +1,71 @@
+FROM ubuntu:20.04 AS builder
+ARG DEBIAN_FRONTEND=noninteractive				#设置非交互构建
+
+ARG ref=master
+WORKDIR /tmp/zsh-build
+# 更换源改为阿里源
+RUN sed -i s@/archive.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
+RUN apt-get update && apt-get -y upgrade   && apt-get install -y \
+    perl-base\
+    perl \
+    curl \
+    ca-certificates \
+    autoconf \
+    make \
+    libtool \
+    libcap-dev \
+    libc6 \
+    libc6-dev \ 
+    libtinfo5 \
+    libncursesw5-dev \
+    libpcre3\
+    libpcre3-dev \
+    libgdbm-dev \
+    libncurses-dev \
+    yodl \
+    libtext-unidecode-perl \
+    libxml-libxml-perl \
+    groff \
+    man-db \
+    texinfo \
+    cm-super-minimal texlive-fonts-recommended texlive-latex-base texlive-latex-recommended ghostscript bsdmainutils \
+    patch && rm -rf /var/lib/apt/lists/*
+RUN curl -L https://api.github.com/repos/zsh-users/zsh/tarball/$ref | tar xz --strip=1
+
+COPY *.patch ./
+RUN for p in *.patch; do patch -s -p1 -r /dev/null -i $p || true; done
+
+RUN ./Util/preconfig
+RUN build_platform=x86_64; \
+    case "$(dpkg --print-architecture)" in \
+      arm64) \
+        build_platform="aarch64" \
+        ;; \
+    esac; \
+    ./configure --build=${build_platform}-unknown-linux-gnu \
+                --prefix /usr \
+                --enable-pcre \
+                --enable-cap \
+                --enable-multibyte \
+                --with-term-lib='ncursesw tinfo' \
+                --with-tcsetpgrp
+RUN make && make -C Etc all FAQ FAQ.html 
+RUN make -C Doc everything
+RUN make install DESTDIR=/tmp/zsh-install
+RUN make install.info DESTDIR=/tmp/zsh-install || true
+RUN yes '' | adduser --shell /bin/sh --home /tmp/zsh-build --disabled-login --disabled-password zshtest
+RUN chown -R zshtest /tmp/zsh-build
+RUN su - zshtest -c 'timeout 120 make test' || true
+
+FROM ubuntu:20.04
+WORKDIR /
+COPY --from=builder /tmp/zsh-install /
+RUN sed -i s@/archive.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
+
+RUN apt-get update && apt-get -y upgrade && apt-get install -y \
+    libcap2 \
+    libtinfo5 \
+    libncursesw5 \
+    libpcre3 \
+    libgdbm6 && rm -rf /var/lib/apt/lists/*
+CMD ["/usr/bin/zsh","-l"]
