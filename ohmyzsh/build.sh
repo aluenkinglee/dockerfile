@@ -10,14 +10,14 @@ IMAGE="$(basename "$(pwd)")"
 
 # Get ohmyzsh stable releases
 versions="$(curl -sL https://api.github.com/repos/ohmyzsh/ohmyzsh/tags | sed -n 's/[^0-9.]*"name": "v\?\([^"]*\)"[^0-9.]*/\n\1/g;s/^\n//p')"
-versions="$versions main"
+versions="$versions latest"
 
 # Build images
 for version in $versions; do
     # Rename main to master for the branch name
     # TODO: remove this logic once the master branch has been renamed
     omz_version=$version
-    [[ $version = main ]] && omz_version=master
+    [[ $version = latest ]] && omz_version=master
 
     docker buildx build -t "$USERNAME/$IMAGE:$version" --build-arg OMZ_VERSION="$omz_version" .
 done
